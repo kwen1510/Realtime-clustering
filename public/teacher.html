@@ -154,8 +154,17 @@
 
     const params = new URLSearchParams(location.search);
     let sessionCode = (params.get('session') || '').trim();
+    function generateSixDigitCode() {
+      try {
+        const arr = new Uint32Array(1);
+        crypto.getRandomValues(arr);
+        return String(arr[0] % 1000000).padStart(6, '0');
+      } catch {
+        return String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+      }
+    }
     if (!sessionCode) {
-      sessionCode = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+      sessionCode = generateSixDigitCode();
       const newUrl = new URL(location.href);
       newUrl.searchParams.set('session', sessionCode);
       window.history.replaceState({}, '', newUrl);
@@ -226,7 +235,7 @@
     }
 
     function escapeRe(text) {
-      return text.replace(/[\^$.*+?()[\]{}|]/g, '\$&');
+      return text.replace(/[\^$.*+?()[\]{}|]/g, '\\$&');
     }
 
     const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
