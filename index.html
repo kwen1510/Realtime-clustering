@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>BM25 Real-Time Grouper (HTML-only)</title>
+<style>
+  :root{
+    --bg:#0b1222; --panel:#0f172a; --ink:#e5e7eb; --muted:#94a3b8; --accent:#60a5fa; --chip:#1f2937;
+    --ok:#10b981; --warn:#f59e0b; --danger:#ef4444; --border:#1e293b;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:linear-gradient(135deg,#0b1222 0%,#0b1020 50%,#0a1228 100%);
+    color:var(--ink); font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;
+    line-height:1.4; display:flex; flex-direction:column; align-items:center;
+  }
+  .wrap{width:min(1100px,100%); padding:20px}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  h1{font-size:1.25rem; margin:0 0 12px}
+  .row{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+  textarea,input,button,select{font:inherit; color:inherit}
+  textarea{
+    width:100%; min-height:84px; resize:vertical; background:#0b1020; color:var(--ink);
+    border:1px solid var(--border); border-radius:12px; padding:12px
+  }
+  input[type="text"]{
+    flex:1 1 320px; background:#0b1020; border:1px solid var(--border);
+    border-radius:12px; padding:10px 12px
+  }
+  button{
+    background:var(--accent); color:#001022; border:none; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:600
+  }
+  button.ghost{background:transparent; border:1px solid var(--border); color:var(--ink)}
+  .chips{display:flex; gap:8px; flex-wrap:wrap}
+  .chip{background:var(--chip); border:1px solid var(--border); padding:6px 10px; border-radius:999px; font-size:.85rem}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px}
+  .group{
+    border:1px dashed var(--border); border-radius:14px; padding:12px; background:rgba(96,165,250,.05)
+  }
+  .group h3{margin:0 0 8px; font-size:1rem}
+  .item{
+    background:#0b1020; border:1px solid var(--border); border-radius:12px; padding:10px; margin:8px 0
+  }
+  .badge{padding:2px 8px; border-radius:999px; font-size:.75rem; border:1px solid var(--border); color:var(--muted)}
+  .muted{color:var(--muted)}
+  .controls{gap:10px; align-items:center}
+  .range{display:flex; align-items:center; gap:10px}
+  input[type="range"]{width:220px}
+  .footer{opacity:.8; font-size:.9rem; margin-top:8px}
+  .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:.9rem}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" style="margin-bottom:12px">
+      <h1>BM25 Real-Time Grouper</h1>
+      <div class="row controls">
+        <div class="range">
+          <span class="muted">Similarity threshold</span>
+          <input id="thresh" type="range" min="0" max="1.2" step="0.01" value="0.35" />
+          <span id="threshVal" class="badge">0.35</span>
+        </div>
+        <label class="chips">
+          <span class="chip"><input id="stopToggle" type="checkbox" checked> use stop-words</span>
+          <span class="chip"><input id="stemToggle" type="checkbox"> light stemming</span>
+          <span class="chip"><input id="liveToggle" type="checkbox" checked> live update</span>
+        </label>
+        <button id="exampleBtn" class="ghost">Load examples</button>
+        <button id="clearBtn" class="ghost">Clear all</button>
+      </div>
+      <div style="height:8px"></div>
+      <div class="row">
+        <input id="itemInput" type="text" placeholder="Type an item (sentence/phrase) and press Enter or Add…" />
+        <button id="addBtn">Add</button>
+      </div>
+      <div style="height:10px"></div>
+      <textarea id="bulk" placeholder="Or paste multiple lines here, then click ‘Add all’…"></textarea>
+      <div class="row">
+        <button id="addAllBtn" class="ghost">Add all</button>
+        <span class="muted">Items: <span id="count">0</span></span>
+      </div>
+      <div class="footer mono muted">
+        Similarity uses BM25 (k1=1.2, b=0.75) averaged bidirectionally and normalized by token count. Groups are connected components with similarity ≥ threshold.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:baseline">
+        <h2 style="margin:0;font-size:1.05rem">Groups</h2>
+        <span class="badge" id="groupSummary">0 groups</span>
+      </div>
+      <div id="groups" class="grid" aria-live="polite"></div>
+    </div>
+  </div>
+
+<script>
+/* ---------------------------- Utilities ---------------------------- */
+const stopWordsSet = new Set(("a,an,and,are,as,at,be,by,for,from,has,he,in,is,it,its,of,on,that,the,to,was,were,will,with," +
+  "this,these,those,but,or,if,then,than,so,not,no,can,just,into,over,under,up,down,off,out,too,very,also,about,between," +
+  "because,while,until,once,again,only,own,same,any,both,each,other,more,most,such").split(','));
+
+/** very light stemmer: plurals & -ing/-ed **/
+function lightStem(tok){
+  if (tok.length <= 3) return tok;
+  if (tok.endsWith('ies')) return tok.slice(0, -3) + 'y';
+  if (tok.endsWith('ing') && tok.length > 5) return tok.slice(0, -3);
+  if (tok.endsWith('ed') && tok.length > 4) return tok.slice(0, -2);
+  if (tok.endsWith('s') && tok.length > 3) return tok.slice(0, -1);
+  return tok;
+}
+
+function tokenize(text, useStop=true, useStem=false){
+  const raw = text.toLowerCase().normalize('NFKC').match(/[a-z0-9]+/g) || [];
+  const toks = [];
+  for (let t of raw){
+    if (useStop && stopWordsSet.has(t)) continue;
+    if (useStem) t = lightStem(t);
+    toks.push(t);
+  }
+  return toks;
+}
+
+/* ----------------------------- BM25 Core ----------------------------- */
+const BM25 = (function(){
+  const k1 = 1.2, b = 0.75;
+
+  function buildIndex(docs, useStop, useStem){
+    const D = docs.map(d => tokenize(d, useStop, useStem));
+    const N = D.length;
+    const dl = D.map(d => d.length);
+    const avgdl = dl.reduce((a,b)=>a+b,0) / (N || 1);
+
+    const df = new Map();               // term -> doc frequency
+    const tfs = D.map(tokens => {       // per-doc term frequencies
+      const m = new Map();
+      for (const t of tokens) m.set(t, (m.get(t)||0)+1);
+      for (const k of m.keys()) df.set(k, (df.get(k)||0)+1);
+      return m;
+    });
+
+    const idf = new Map();
+    for (const [t, n] of df.entries()){
+      // standard BM25 idf
+      const val = Math.log( ( (N - n + 0.5) / (n + 0.5) ) + 1 );
+      idf.set(t, val);
+    }
+    return { D, N, dl, avgdl, tfs, idf };
+  }
+
+  function score(queryTokens, docIdx, index){
+    const { tfs, idf, dl, avgdl } = index;
+    const len = dl[docIdx] || 0;
+    const tf = tfs[docIdx];
+    let s = 0;
+    for (const q of queryTokens){
+      const f = tf.get(q) || 0;
+      if (!f) continue;
+      const idf_q = idf.get(q) || 0;
+      const denom = f + k1 * (1 - b + b * (len / (avgdl || 1)));
+      s += idf_q * (f * (k1 + 1)) / (denom || 1);
+    }
+    return s;
+  }
+
+  // symmetric similarity between doc i and j: average of BM25(q=ti, d=j) and BM25(q=tj, d=i),
+  // then lightly normalized by combined token counts to tame long texts.
+  function pairSim(i, j, index){
+    const qi = index.D[i], qj = index.D[j];
+    if (qi.length === 0 || qj.length === 0) return 0;
+    const s1 = score(qi, j, index);
+    const s2 = score(qj, i, index);
+    const norm = Math.log(2 + qi.length + qj.length); // gentle normalization
+    return (s1 + s2) / (2 * norm);
+  }
+
+  return { buildIndex, pairSim };
+})();
+
+/* --------------------------- Grouping Logic --------------------------- */
+// Build a graph with edge i<->j if sim >= threshold; return connected components.
+function groupBySimilarity(items, index, threshold){
+  const n = items.length;
+  const adj = Array.from({length:n}, () => []);
+  for (let i=0;i<n;i++){
+    for (let j=i+1;j<n;j++){
+      const sim = BM25.pairSim(i,j,index);
+      if (sim >= threshold){
+        adj[i].push(j); adj[j].push(i);
+      }
+    }
+  }
+  // components
+  const seen = new Array(n).fill(false), groups = [];
+  for (let i=0;i<n;i++){
+    if (seen[i]) continue;
+    const comp = [];
+    const st = [i]; seen[i] = true;
+    while (st.length){
+      const v = st.pop(); comp.push(v);
+      for (const w of adj[v]) if (!seen[w]){ seen[w]=true; st.push(w); }
+    }
+    groups.push(comp);
+  }
+  // sort groups by size desc
+  groups.sort((a,b)=>b.length - a.length);
+  return { groups, adj };
+}
+
+/* ------------------------------- UI State ------------------------------- */
+const els = {
+  input: document.getElementById('itemInput'),
+  add: document.getElementById('addBtn'),
+  bulk: document.getElementById('bulk'),
+  addAll: document.getElementById('addAllBtn'),
+  clear: document.getElementById('clearBtn'),
+  example: document.getElementById('exampleBtn'),
+  groups: document.getElementById('groups'),
+  groupSummary: document.getElementById('groupSummary'),
+  count: document.getElementById('count'),
+  thresh: document.getElementById('thresh'),
+  threshVal: document.getElementById('threshVal'),
+  stop: document.getElementById('stopToggle'),
+  stem: document.getElementById('stemToggle'),
+  live: document.getElementById('liveToggle'),
+};
+
+let items = []; // { id, text }
+let index = BM25.buildIndex([], els.stop.checked, els.stem.checked);
+
+function rebuild(){
+  index = BM25.buildIndex(items.map(x=>x.text), els.stop.checked, els.stem.checked);
+  const threshold = parseFloat(els.thresh.value);
+  const { groups } = groupBySimilarity(items, index, threshold);
+  renderGroups(groups);
+  els.count.textContent = String(items.length);
+}
+
+function addItem(text){
+  const t = text.trim();
+  if (!t) return;
+  items.push({ id: crypto.randomUUID(), text: t });
+  if (els.live.checked) rebuild();
+}
+
+function addAll(lines){
+  for (const line of lines){
+    const t = line.trim();
+    if (t) items.push({ id: crypto.randomUUID(), text: t });
+  }
+  rebuild();
+}
+
+function clearAll(){
+  items = [];
+  rebuild();
+}
+
+/* ------------------------------ Rendering ------------------------------ */
+function renderGroups(groups){
+  const frag = document.createDocumentFragment();
+  groups.forEach((g, gi)=>{
+    const card = document.createElement('div');
+    card.className = 'group';
+    const h = document.createElement('h3');
+    h.textContent = `Group ${gi+1}`;
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.style.marginLeft = '8px';
+    badge.textContent = `${g.length} item${g.length>1?'s':''}`;
+    h.appendChild(badge);
+    card.appendChild(h);
+    g.forEach(idx=>{
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.textContent = items[idx].text;
+      card.appendChild(div);
+    });
+    frag.appendChild(card);
+  });
+  els.groups.replaceChildren(frag);
+  els.groupSummary.textContent = `${groups.length} group${groups.length!==1?'s':''}`;
+}
+
+/* ------------------------------ Interactions ------------------------------ */
+els.add.addEventListener('click', ()=>{
+  addItem(els.input.value);
+  els.input.value = '';
+  if (!els.live.checked) rebuild();
+});
+els.input.addEventListener('keydown', (e)=>{
+  if (e.key === 'Enter'){
+    e.preventDefault();
+    addItem(els.input.value);
+    els.input.value = '';
+    if (!els.live.checked) rebuild();
+  }
+});
+els.addAll.addEventListener('click', ()=>{
+  addAll(els.bulk.value.split('\n'));
+  els.bulk.value = '';
+});
+els.clear.addEventListener('click', clearAll);
+els.example.addEventListener('click', ()=>{
+  const sample = [
+    "apple banana smoothie recipe",
+    "strawberry banana milkshake",
+    "how to fix a leaking tap",
+    "plumbing guide for kitchen sink",
+    "javascript bm25 text ranking",
+    "bm25 vs tf-idf explanation",
+    "best running shoes for flat feet",
+    "marathon training plan week 1",
+    "pasta carbonara without cream",
+    "spaghetti aglio e olio quick recipe",
+    "intro to transformers in machine learning",
+    "bert fine-tuning tutorial"
+  ];
+  addAll(sample);
+});
+['input','change'].forEach(evt=>{
+  els.thresh.addEventListener(evt, ()=>{
+    els.threshVal.textContent = Number(els.thresh.value).toFixed(2);
+    rebuild();
+  });
+  els.stop.addEventListener(evt, rebuild);
+  els.stem.addEventListener(evt, rebuild);
+  els.live.addEventListener(evt, ()=>{/* no rebuild */});
+});
+
+rebuild(); // initial
+</script>
+</body>
+</html>
