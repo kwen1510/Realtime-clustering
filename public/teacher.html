@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Teacher Console — Live Typing</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'Segoe UI', 'system-ui', 'sans-serif']
+          },
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              200: '#bfdbfe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8'
+            }
+          },
+          boxShadow: {
+            elevated: '0 25px 60px -25px rgba(15,23,42,0.35)'
+          }
+        }
+      }
+    };
+  </script>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+  <style>
+    body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
+    mark { background-color: #fef08a; color: inherit; padding: 0 0.2em; border-radius: 0.35rem; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body class="bg-gradient-to-b from-slate-50 via-white to-slate-100 text-slate-900">
+  <div class="mx-auto max-w-7xl space-y-8 px-6 py-10">
+    <header class="space-y-6">
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Real-time responses</h1>
+          <span id="studentCount" class="inline-flex items-center gap-2 rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700">0 students</span>
+        </div>
+        <p id="statusLine" class="text-sm text-slate-500">Add ?session=CODE to join a live class.</p>
+      </div>
+      <div class="rounded-3xl bg-white p-6 shadow-lg ring-1 ring-blue-100">
+        <div class="flex flex-wrap items-center justify-between gap-6">
+          <div class="space-y-3 flex-1 min-w-[240px]">
+            <p class="text-xs font-semibold uppercase tracking-widest text-slate-500">Session code</p>
+            <p id="sessionCodeText" class="text-3xl font-bold tracking-wide text-slate-900">—</p>
+            <a id="sessionLink" class="inline-flex w-fit items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline" target="_blank" rel="noopener"> </a>
+          </div>
+          <img id="sessionQr" alt="QR code for student join link" class="h-28 w-28 sm:h-32 sm:w-32 rounded-2xl border border-blue-100 bg-blue-50/40 p-2" />
+        </div>
+      </div>
+    </header>
+
+    <section class="rounded-3xl bg-white p-6 shadow-lg ring-1 ring-blue-100 space-y-8">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex flex-wrap gap-3">
+          <button id="sampleBtn" type="button" class="inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:-translate-y-0.5 hover:bg-blue-500">Load sample class</button>
+          <button id="clearSampleBtn" type="button" class="inline-flex items-center gap-2 rounded-full border border-blue-500/40 bg-white px-5 py-3 text-sm font-semibold text-blue-600 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-600 hover:text-blue-700">Return to live data</button>
+        </div>
+        <span id="sampleNotice" class="hidden text-sm font-medium text-orange-600">Showing sample data.</span>
+      </div>
+      <div class="grid gap-8 lg:grid-cols-2">
+        <div class="space-y-4">
+          <div class="space-y-2">
+            <label for="model" class="text-xs font-semibold uppercase tracking-wide text-slate-600">Model answer</label>
+            <textarea id="model" rows="4" placeholder="Paste your ideal answer…" class="w-full rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-slate-900 shadow-inner focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-offset-0"></textarea>
+          </div>
+          <p class="text-sm text-slate-500">Keywords generate automatically when you leave the box. Remove chips to refine highlighting.</p>
+          <div id="keywordChips" class="flex flex-wrap gap-2"></div>
+        </div>
+        <div class="space-y-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">Clustering</p>
+          <button id="clusterBtn" type="button" class="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:-translate-y-0.5 hover:bg-blue-500">Cluster live responses</button>
+          <p id="clusterStatus" class="text-sm text-slate-500">Run clustering to see quick summaries.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="rounded-3xl bg-white p-5 shadow-lg ring-1 ring-blue-100">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="inline-flex rounded-full bg-slate-100 p-1">
+          <button id="liveViewBtn" type="button" class="inline-flex min-w-[150px] items-center justify-center rounded-full bg-white px-5 py-2 text-sm font-semibold text-blue-600 shadow-sm transition">Live responses</button>
+          <button id="clusteredViewBtn" type="button" class="inline-flex min-w-[150px] items-center justify-center rounded-full px-5 py-2 text-sm font-semibold text-slate-500 transition" disabled>Clustered snapshot</button>
+        </div>
+        <p id="viewNotice" class="hidden text-sm text-slate-500"></p>
+      </div>
+    </section>
+
+    <section id="clusterResultsCard" class="hidden rounded-3xl bg-white p-6 shadow-lg ring-1 ring-blue-100 space-y-6">
+      <div id="clusterResults" class="grid gap-6"></div>
+    </section>
+
+    <section id="responsesCard" class="rounded-3xl bg-white p-6 shadow-lg ring-1 ring-slate-200">
+      <div id="board" class="grid gap-6 lg:grid-cols-2 2xl:grid-cols-3"></div>
+    </section>
+<script type="module">
+    import QRCode from "https://cdn.jsdelivr.net/npm/qrcode@1.5.1/+esm";
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/+esm";
+    import { PROMPT_TEMPLATE, CLUSTER_MODEL_ID, MIN_CLUSTER_RESPONSES } from "./config.js";
+
+    const sampleResponses = [
+      { student: "Student A", content: "Because their C–C and C–H bonds are so strong, alkanes barely react under normal lab conditions." },
+      { student: "Student B", content: "Alkanes tend to be inert; they resist most reagents unless you supply intense heat or UV light." },
+      { student: "Student C", content: "In general, alkanes are quite unreactive compared with other hydrocarbons because they lack functional groups." },
+      { student: "Student D", content: "Alkanes can combust vigorously, reacting with oxygen to release lots of energy as heat." },
+      { student: "Student E", content: "When you halogenate alkanes with chlorine and UV, they react to form haloalkanes—so they are reactive under the right conditions." },
+      { student: "Student F", content: "Cracking is proof that alkanes react: large alkanes are broken into smaller chains and alkenes when heated with a catalyst." },
+      { student: "Student G", content: "Alkanes are saturated hydrocarbons; they are not the same as alkenes, which contain at least one double bond." }
+    ];
+
+    const clusterPalette = [
+      { bg: 'linear-gradient(135deg, rgba(187,247,208,0.85), rgba(220,252,231,0.95))', border: 'rgba(74,222,128,0.5)', shadow: '0 30px 60px -32px rgba(22,163,74,0.35)', heading: '#166534' },
+      { bg: 'linear-gradient(135deg, rgba(165,243,252,0.8), rgba(204,251,241,0.95))', border: 'rgba(45,212,191,0.45)', shadow: '0 30px 60px -32px rgba(13,148,136,0.35)', heading: '#0f766e' },
+      { bg: 'linear-gradient(135deg, rgba(233,213,255,0.8), rgba(244,221,255,0.95))', border: 'rgba(196,181,253,0.45)', shadow: '0 30px 60px -32px rgba(168,85,247,0.28)', heading: '#6b21a8' },
+      { bg: 'linear-gradient(135deg, rgba(254,249,195,0.85), rgba(254,240,138,0.95))', border: 'rgba(250,204,21,0.45)', shadow: '0 30px 60px -32px rgba(202,138,4,0.32)', heading: '#92400e' },
+      { bg: 'linear-gradient(135deg, rgba(191,219,254,0.82), rgba(219,234,254,0.95))', border: 'rgba(96,165,250,0.45)', shadow: '0 30px 60px -32px rgba(59,130,246,0.32)', heading: '#1d4ed8' }
+    ];
+
+    const DEFAULT_CLUSTERS_TEXT = 'Run clustering to see quick summaries.';
+
+    const cfg = await fetch('/config').then(r => r.json());
+    const supabase = createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+
+    const board = document.getElementById('board');
+    const studentCount = document.getElementById('studentCount');
+    const sampleBtn = document.getElementById('sampleBtn');
+    const clearSampleBtn = document.getElementById('clearSampleBtn');
+    const sampleNotice = document.getElementById('sampleNotice');
+    const modelTa = document.getElementById('model');
+    const keywordChips = document.getElementById('keywordChips');
+    const clusterBtn = document.getElementById('clusterBtn');
+    const clusterStatus = document.getElementById('clusterStatus');
+    const clusterResultsCard = document.getElementById('clusterResultsCard');
+    const clusterResults = document.getElementById('clusterResults');
+    const statusLine = document.getElementById('statusLine');
+    const sessionCodeText = document.getElementById('sessionCodeText');
+    const sessionLinkEl = document.getElementById('sessionLink');
+    const sessionQrImg = document.getElementById('sessionQr');
+    const viewNotice = document.getElementById('viewNotice');
+    const liveViewBtn = document.getElementById('liveViewBtn');
+    const clusteredViewBtn = document.getElementById('clusteredViewBtn');
+    const responsesCard = document.getElementById('responsesCard');
+    const micIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 1 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>';
+    const stopIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+
+    const params = new URLSearchParams(location.search);
+    let sessionCode = (params.get('session') || '').trim();
+    if (!sessionCode) {
+      sessionCode = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+      const newUrl = new URL(location.href);
+      newUrl.searchParams.set('session', sessionCode);
+      window.history.replaceState({}, '', newUrl);
+    }
+    const joinUrl = `${location.origin}/?session=${encodeURIComponent(sessionCode)}`;
+    statusLine.textContent = 'Connecting…';
+    sessionCodeText.textContent = sessionCode;
+    sessionLinkEl.textContent = joinUrl;
+    sessionLinkEl.href = joinUrl;
+    try {
+      const qrData = await QRCode.toDataURL(joinUrl, { width: 140, margin: 1 });
+      sessionQrImg.src = qrData;
+    } catch (err) {
+      console.error('QR generation failed', err);
+    }
+
+    const stopwords = new Set([
+      'the','and','but','for','nor','yet','so','a','an','of','in','on','to','with','at','by','from','as','is','are','was','were','be','been','being','that','this','those','these','it','its','their','they','them','you','your','i','we','our','or','if','because','about','into','through','during','before','after','above','below','off','over','under','again','further','then','once','here','there','when','where','why','how','all','any','both','each','few','more','most','other','some','such','no','not','only','own','same','so','than','too','very','can','will','just','have','has','had','do','does','did','make','makes','made','also','much','many'
+    ]);
+
+    const KEYWORD_CHIP_CLASS = 'inline-flex items-center gap-2 rounded-full border border-blue-200/70 bg-blue-50 px-3.5 py-1.5 text-sm font-semibold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-400 hover:text-blue-800';
+    const KEYWORD_REMOVE_CLASS = 'flex h-5 w-5 items-center justify-center rounded-full bg-white text-blue-600 shadow hover:bg-blue-50';
+    const KEYWORD_EMPTY_CLASS = 'text-sm text-slate-400';
+    const STUDENT_CARD_CLASS = 'flex flex-col gap-5 rounded-3xl bg-white p-6 shadow-lg ring-1 ring-slate-200';
+    const STUDENT_HEADER_CLASS = 'flex items-start justify-between gap-3';
+    const STUDENT_NAME_CLASS = 'text-lg font-semibold text-slate-900';
+    const SAMPLE_BADGE_CLASS = 'inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-indigo-700 shadow-sm';
+    const STUDENT_BODY_CLASS = 'min-h-[7rem] whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 p-4 text-base leading-relaxed text-slate-800 shadow-inner';
+    const PLACEHOLDER_CLASS = 'text-sm italic text-slate-400';
+    const FEEDBACK_SECTION_CLASS = 'space-y-4';
+    const FEEDBACK_LABEL_CLASS = 'text-xs font-semibold uppercase tracking-wide text-slate-500';
+    const FEEDBACK_TEXTAREA_CLASS = 'w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 shadow-inner focus:border-blue-500 focus:outline-none focus:ring focus:ring-blue-200';
+    const FEEDBACK_ACTIONS_CLASS = 'flex flex-wrap items-center justify-between gap-3';
+    const FEEDBACK_SEND_BTN_CLASS = 'inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:-translate-y-0.5 hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40';
+    const MIC_BUTTON_CLASS = 'inline-flex h-9 w-9 items-center justify-center rounded-full border border-blue-200 bg-white text-blue-500 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-400 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
+    const MIC_BUTTON_RECORDING_CLASSES = ['border-rose-400', 'text-rose-500', 'shadow-sm', 'bg-rose-50'];
+    const CLUSTER_CARD_CLASS = 'rounded-3xl border border-blue-100 bg-white p-6 shadow-lg space-y-4';
+    const CLUSTER_META_CLASS = 'text-xs font-semibold uppercase tracking-wide text-slate-500';
+    const CLUSTER_RESPONSES_CLASS = 'grid gap-3';
+    const CLUSTER_RESPONSE_CARD_CLASS = 'rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm';
+    const CLUSTER_RESPONSE_NAME_CLASS = 'text-sm font-semibold text-slate-800';
+    const CLUSTER_RESPONSE_TEXT_CLASS = 'mt-1 text-sm leading-relaxed text-slate-700';
+    const EMPTY_TEXT_CLASS = 'text-sm text-slate-400';
+
+    const state = {
+      usingSamples: false,
+      keywords: [],
+      typingMap: new Map(),
+      feedbackDrafts: new Map(),
+      transcripts: new Map(),
+      channel: null,
+      recording: null,
+      latestPrompt: PROMPT_TEMPLATE,
+      mode: 'live',
+      snapshot: [],
+      snapshotTimestamp: null,
+      clusters: []
+    };
+
+    const nameCollator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+
+    function debounce(fn, delay = 400) {
+      let timer;
+      return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), delay);
+      };
+    }
+
+    function escapeRe(text) {
+      return text.replace(/[\^$.*+?()[\]{}|]/g, '\$&');
+    }
+
+    const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+    function escapeHtml(value = '') {
+      return value.replace(/[&<>"']/g, char => HTML_ESCAPES[char]);
+    }
+
+    function highlight(text, keywords) {
+      const base = text || '';
+      const unique = [...new Set(keywords.map(k => k.trim()).filter(Boolean))];
+      if (!unique.length) return escapeHtml(base);
+      const sorted = unique.sort((a, b) => b.length - a.length);
+      const patternParts = sorted.map(keyword => {
+        const escaped = escapeRe(keyword);
+        const requiresBoundary = /^[\p{L}\p{N}]+$/u.test(keyword);
+        const pattern = requiresBoundary ? `\\b${escaped}\\b` : escaped;
+        return `(?:${pattern})`;
+      });
+      const regex = new RegExp(patternParts.join('|'), 'giu');
+      let lastIndex = 0;
+      const chunks = [];
+      let match;
+      while ((match = regex.exec(base)) !== null) {
+        const { index } = match;
+        const matchText = match[0];
+        if (index > lastIndex) {
+          chunks.push(escapeHtml(base.slice(lastIndex, index)));
+        }
+        chunks.push(`<mark>${escapeHtml(matchText)}</mark>`);
+        lastIndex = index + matchText.length;
+        if (matchText.length === 0) {
+          regex.lastIndex += 1;
+        }
+      }
+      if (lastIndex < base.length) {
+        chunks.push(escapeHtml(base.slice(lastIndex)));
+      }
+      return chunks.join('');
+    }
+
+    function extractKeywords(text, max = 12) {
+      const counts = new Map();
+      const words = text.toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').split(/\s+/).filter(Boolean);
+      for (const word of words) {
+        if (stopwords.has(word) || word.length < 3) continue;
+        counts.set(word, (counts.get(word) || 0) + 1);
+      }
+      return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, max).map(([word]) => word);
+    }
+
+    function setKeywords(list) {
+      state.keywords = Array.from(new Set(list.map(k => k.trim()).filter(Boolean)));
+      renderKeywordChips();
+      renderBoard();
+    }
+
+    function renderKeywordChips() {
+      keywordChips.innerHTML = '';
+      if (!state.keywords.length) {
+        const empty = document.createElement('span');
+        empty.className = KEYWORD_EMPTY_CLASS;
+        empty.textContent = 'No keywords yet.';
+        keywordChips.appendChild(empty);
+        return;
+      }
+      state.keywords.forEach(keyword => {
+        const chip = document.createElement('span');
+        chip.className = KEYWORD_CHIP_CLASS;
+        const label = document.createElement('span');
+        label.textContent = keyword;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = KEYWORD_REMOVE_CLASS;
+        remove.textContent = '×';
+        remove.setAttribute('aria-label', `Remove keyword ${keyword}`);
+        remove.addEventListener('click', () => {
+          state.keywords = state.keywords.filter(k => k !== keyword);
+          renderKeywordChips();
+          renderBoard();
+        });
+        chip.append(label, remove);
+        keywordChips.appendChild(chip);
+      });
+    }
+
+    function autoExtractKeywords() {
+      if (state.usingSamples) return;
+      const raw = (modelTa.value || '').trim();
+      if (!raw) { setKeywords([]); return; }
+      setKeywords(extractKeywords(raw));
+    }
+
+    function readyEntries() {
+      return currentEntries().filter(entry => (entry.content || '').trim().length);
+    }
+
+    function updateClusterButton() {
+      if (!clusterBtn) return;
+      const count = readyEntries().length;
+      const need = MIN_CLUSTER_RESPONSES || 0;
+      if (need > 0 && count < need) {
+        clusterBtn.disabled = true;
+        const remaining = need - count;
+        if (clusterStatus) {
+          clusterStatus.textContent = `Waiting for ${remaining} more response${remaining === 1 ? '' : 's'} to cluster.`;
+        }
+      } else {
+        clusterBtn.disabled = false;
+        if (clusterStatus && clusterStatus.textContent.startsWith('Waiting for') && !state.clusters.length) {
+          clusterStatus.textContent = DEFAULT_CLUSTERS_TEXT;
+        }
+      }
+    }
+
+    function showClusterMessage(message) {
+      if (clusterStatus) {
+        clusterStatus.textContent = message;
+      }
+    }
+
+    function renderClusters(entries = state.snapshot) {
+      clusterResults.innerHTML = '';
+      const list = Array.isArray(entries) ? entries : [];
+      if (!Array.isArray(state.clusters) || !state.clusters.length) {
+        const empty = document.createElement('p');
+        empty.className = EMPTY_TEXT_CLASS;
+        empty.textContent = DEFAULT_CLUSTERS_TEXT;
+        clusterResults.appendChild(empty);
+        return;
+      }
+      state.clusters.forEach((cluster, index) => {
+        const card = document.createElement('div');
+        card.className = CLUSTER_CARD_CLASS;
+        const palette = clusterPalette[index % clusterPalette.length];
+        card.style.background = palette.bg;
+        card.style.borderColor = palette.border;
+        card.style.boxShadow = palette.shadow;
+
+        const title = document.createElement('h4');
+        title.className = 'text-xl font-semibold';
+        title.style.color = palette.heading;
+        title.textContent = cluster.title || `Cluster ${index + 1}`;
+        card.appendChild(title);
+
+        const indices = Array.isArray(cluster.indices) ? cluster.indices : [];
+        const count = document.createElement('p');
+        const responseLabel = indices.length === 1 ? 'response' : 'responses';
+        count.className = CLUSTER_META_CLASS;
+        count.textContent = `${indices.length} ${responseLabel}`;
+        card.appendChild(count);
+
+        const responseList = document.createElement('div');
+        responseList.className = CLUSTER_RESPONSES_CLASS;
+
+        if (!indices.length) {
+          const emptyCard = document.createElement('div');
+          emptyCard.className = CLUSTER_RESPONSE_CARD_CLASS;
+          const emptyText = document.createElement('p');
+          emptyText.className = CLUSTER_RESPONSE_TEXT_CLASS;
+          emptyText.textContent = 'No responses captured for this cluster.';
+          emptyCard.appendChild(emptyText);
+          responseList.appendChild(emptyCard);
+        }
+
+        indices.forEach(i => {
+          const entry = list[i];
+          if (!entry) return;
+          const responseCard = document.createElement('div');
+          responseCard.className = CLUSTER_RESPONSE_CARD_CLASS;
+          const name = document.createElement('div');
+          name.className = CLUSTER_RESPONSE_NAME_CLASS;
+          name.textContent = entry.student;
+          const text = document.createElement('p');
+          text.className = CLUSTER_RESPONSE_TEXT_CLASS;
+          text.innerHTML = highlight(entry.content, state.keywords);
+          responseCard.append(name, text);
+          responseList.appendChild(responseCard);
+        });
+
+        card.appendChild(responseList);
+        clusterResults.appendChild(card);
+      });
+    }
+
+    function currentEntries() {
+      if (state.usingSamples) {
+        return sampleResponses
+          .slice()
+          .sort((a, b) => nameCollator.compare(a.student, b.student))
+          .map(sample => ({ student: sample.student, content: sample.content, sample: true }));
+      }
+      return Array.from(state.typingMap.entries())
+        .map(([student, content]) => ({ student, content: content || '', sample: false }))
+        .sort((a, b) => nameCollator.compare(a.student, b.student));
+    }
+
+    function renderBoard() {
+      board.innerHTML = '';
+      const entries = state.mode === 'snapshot' ? state.snapshot : currentEntries();
+      const realStudents = entries.filter(entry => !entry.sample);
+      if (studentCount) {
+        studentCount.textContent = `${realStudents.length} student${realStudents.length === 1 ? '' : 's'}`;
+      }
+      if (!entries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'rounded-3xl border border-dashed border-slate-300 bg-white/70 p-6 text-center text-sm font-medium text-slate-400';
+        empty.textContent = state.usingSamples ? 'Sample data will appear here.' : 'Waiting for students to type…';
+        board.appendChild(empty);
+        return;
+      }
+      entries.forEach(entry => {
+        const card = document.createElement('article');
+        card.className = STUDENT_CARD_CLASS;
+
+        const header = document.createElement('div');
+        header.className = STUDENT_HEADER_CLASS;
+        const name = document.createElement('h4');
+        name.className = STUDENT_NAME_CLASS;
+        name.textContent = entry.student;
+        header.appendChild(name);
+        if (state.usingSamples) {
+          const badge = document.createElement('span');
+          badge.className = SAMPLE_BADGE_CLASS;
+          badge.textContent = 'Sample';
+          header.appendChild(badge);
+        }
+        card.appendChild(header);
+
+        const body = document.createElement('div');
+        body.className = STUDENT_BODY_CLASS;
+        if ((entry.content || '').trim()) {
+          body.innerHTML = highlight(entry.content, state.keywords);
+        } else {
+          const ph = document.createElement('span');
+          ph.className = PLACEHOLDER_CLASS;
+          ph.textContent = 'No typing yet';
+          body.appendChild(ph);
+        }
+        card.appendChild(body);
+
+        const feedback = document.createElement('div');
+        feedback.className = FEEDBACK_SECTION_CLASS;
+        const label = document.createElement('span');
+        label.className = FEEDBACK_LABEL_CLASS;
+        label.textContent = 'Feedback';
+        const textarea = document.createElement('textarea');
+        textarea.className = FEEDBACK_TEXTAREA_CLASS;
+        textarea.value = state.feedbackDrafts.get(entry.student) || state.transcripts.get(entry.student) || '';
+        textarea.placeholder = 'Type feedback to send to the student…';
+        textarea.addEventListener('input', () => {
+          state.feedbackDrafts.set(entry.student, textarea.value);
+        });
+        const actions = document.createElement('div');
+        actions.className = FEEDBACK_ACTIONS_CLASS;
+
+        const micWrap = document.createElement('div');
+        micWrap.className = 'flex items-center';
+        const micBtn = document.createElement('button');
+        micBtn.className = MIC_BUTTON_CLASS;
+        micBtn.innerHTML = micIcon;
+        if (state.recording && state.recording.student === entry.student) {
+          micBtn.innerHTML = stopIcon;
+          micBtn.classList.add(...MIC_BUTTON_RECORDING_CLASSES);
+        }
+        if (!sessionCode || state.usingSamples) micBtn.disabled = true;
+        micBtn.addEventListener('click', () => toggleVoice(entry.student));
+        micWrap.appendChild(micBtn);
+
+        const sendWrap = document.createElement('div');
+        sendWrap.className = 'flex-shrink-0';
+        const sendBtn = document.createElement('button');
+        sendBtn.className = FEEDBACK_SEND_BTN_CLASS;
+        sendBtn.textContent = 'Send feedback';
+        if (!sessionCode || state.usingSamples) sendBtn.disabled = true;
+        sendBtn.addEventListener('click', () => sendFeedback(entry.student, textarea, sendBtn));
+        sendWrap.appendChild(sendBtn);
+
+        actions.append(micWrap, sendWrap);
+        feedback.append(label, textarea, actions);
+        card.appendChild(feedback);
+
+        board.appendChild(card);
+      });
+      updateClusterButton();
+    }
+
+    function cleanupRecording(recordState) {
+      try {
+        recordState.stream?.getTracks().forEach(track => track.stop());
+      } catch (err) {
+        console.error(err);
+      }
+      if (state.recording === recordState) {
+        state.recording = null;
+      }
+      renderBoard();
+    }
+
+    function stopActiveRecording() {
+      const active = state.recording;
+      if (!active) return;
+      try {
+        if (active.recorder?.state && active.recorder.state !== 'inactive') {
+          active.recorder.stop();
+          return;
+        }
+      } catch (err) {
+        console.error(err);
+      }
+      cleanupRecording(active);
+    }
+
+    function updateViewControls() {
+      const hasSnapshot = state.snapshot.length > 0;
+      if (!hasSnapshot && state.mode !== 'live') {
+        state.mode = 'live';
+      }
+      const applyToggleStyle = (btn, { active, disabled }) => {
+        btn.classList.remove('bg-white', 'text-blue-600', 'shadow-sm', 'bg-transparent', 'text-slate-500', 'text-slate-400', 'opacity-50', 'cursor-not-allowed');
+        if (disabled) {
+          btn.disabled = true;
+          btn.classList.add('bg-transparent', 'text-slate-400', 'opacity-50', 'cursor-not-allowed');
+          return;
+        }
+        btn.disabled = false;
+        if (active) {
+          btn.classList.add('bg-white', 'text-blue-600', 'shadow-sm');
+        } else {
+          btn.classList.add('bg-transparent', 'text-slate-500');
+        }
+      };
+
+      applyToggleStyle(liveViewBtn, { active: state.mode === 'live', disabled: false });
+      applyToggleStyle(clusteredViewBtn, { active: state.mode === 'snapshot', disabled: !hasSnapshot });
+      const showClusters = state.mode === 'snapshot' && hasSnapshot;
+      if (clusterResultsCard) {
+        clusterResultsCard.classList.toggle('hidden', !showClusters);
+      }
+      if (responsesCard) {
+        responsesCard.classList.toggle('hidden', showClusters);
+      }
+      if (state.mode === 'snapshot' && hasSnapshot) {
+        const label = state.snapshotTimestamp
+          ? `Showing clustered snapshot from ${state.snapshotTimestamp.toLocaleTimeString()}.`
+          : 'Showing clustered snapshot.';
+        viewNotice.textContent = label;
+        viewNotice.classList.remove('hidden');
+      } else {
+        viewNotice.classList.add('hidden');
+      }
+      if (showClusters) {
+        renderClusters();
+      }
+    }
+
+    async function toggleVoice(student) {
+      if (!navigator.mediaDevices?.getUserMedia) { alert('Microphone not available'); return; }
+      const active = state.recording;
+      if (active && active.student !== student && active.recorder?.state !== 'inactive') {
+        alert(`Finish the recording for ${active.student} first.`);
+        return;
+      }
+      if (active && active.student === student) {
+        stopActiveRecording();
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream);
+        const chunks = [];
+        const recordState = { student, recorder, stream, chunks };
+        state.recording = recordState;
+        renderBoard();
+        recorder.addEventListener('dataavailable', evt => { if (evt.data?.size) chunks.push(evt.data); });
+        recorder.addEventListener('stop', async () => {
+          try {
+            if (!chunks.length) return;
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            if (!blob.size) return;
+            const fd = new FormData();
+            fd.append('audio', blob, `${student.replace(/\s+/g, '_')}.webm`);
+            const resp = await fetch('/api/transcribe', { method: 'POST', body: fd });
+            const data = await resp.json();
+            if (resp.ok) {
+              const transcript = (data.transcript || '').trim();
+              if (transcript) {
+                state.transcripts.set(student, transcript);
+                state.feedbackDrafts.set(student, transcript);
+              }
+            } else {
+              console.error('Transcription failed', data);
+            }
+          } catch (err) {
+            console.error(err);
+          } finally {
+            cleanupRecording(recordState);
+          }
+        });
+        recorder.addEventListener('error', evt => {
+          console.error('Recorder error', evt?.error || evt);
+          cleanupRecording(recordState);
+        });
+        recorder.start();
+      } catch (err) {
+        console.error(err);
+        if (state.recording?.student === student) {
+          cleanupRecording(state.recording);
+        }
+      }
+    }
+
+    async function sendFeedback(student, textarea, button) {
+      if (!state.channel || !sessionCode) { alert('Join a session before sending feedback.'); return; }
+      const message = (textarea.value || '').trim();
+      if (!message) { alert('Feedback is empty.'); return; }
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Sending…';
+      try {
+        await state.channel.send({
+          type: 'broadcast',
+          event: 'feedback',
+          payload: { session: sessionCode, student, feedback: message, ts: Date.now() }
+        });
+        state.feedbackDrafts.set(student, message);
+        button.textContent = 'Sent!';
+        setTimeout(() => { button.textContent = original; button.disabled = false; }, 1200);
+      } catch (err) {
+        console.error(err);
+        button.textContent = 'Retry';
+        button.disabled = false;
+      }
+    }
+
+    function handleTyping(payload) {
+      if (state.usingSamples) return;
+      if (!payload) return;
+      const student = (payload.student || '').trim();
+      if (!student) return;
+      const text = payload.content ?? '';
+      state.typingMap.set(student, text);
+      renderBoard();
+    }
+
+    function connectRealtime() {
+      if (!sessionCode) return;
+      const channelName = `realtime_class_${sessionCode.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+      state.channel = supabase.channel(channelName)
+        .on('broadcast', { event: 'join' }, ({ payload }) => {
+          if (!payload) return;
+          const student = (payload.student || '').trim();
+          if (!student || state.usingSamples) return;
+          if (!state.typingMap.has(student)) state.typingMap.set(student, '');
+          renderBoard();
+        })
+        .on('broadcast', { event: 'typing' }, ({ payload }) => handleTyping(payload))
+        .on('broadcast', { event: 'clear_final' }, () => {
+          state.typingMap.clear();
+          state.snapshot = [];
+          state.snapshotTimestamp = null;
+          state.clusters = [];
+          state.mode = 'live';
+          showClusterMessage(DEFAULT_CLUSTERS_TEXT);
+          updateViewControls();
+          renderClusters([]);
+          renderBoard();
+        })
+        .subscribe(status => { if (status === 'SUBSCRIBED') statusLine.textContent = 'Live typing connected'; });
+    }
+
+    clusterBtn.addEventListener('click', async () => {
+      const entries = readyEntries();
+      const need = MIN_CLUSTER_RESPONSES || 0;
+      if (need > 0 && entries.length < need) {
+        const remaining = need - entries.length;
+        showClusterMessage(`Need ${remaining} more response${remaining === 1 ? '' : 's'} before clustering.`);
+        updateClusterButton();
+        return;
+      }
+      if (!entries.length) { showClusterMessage('No responses available yet.'); return; }
+      const texts = entries.map(entry => `${entry.student}: ${entry.content}`);
+      showClusterMessage('Clustering…');
+      try {
+        const response = await fetch('/api/cluster', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ responses: texts, model: CLUSTER_MODEL_ID })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Clustering failed');
+        state.latestPrompt = data.prompt || PROMPT_TEMPLATE;
+        state.snapshot = entries.map(entry => ({ ...entry }));
+        state.snapshotTimestamp = new Date();
+        state.clusters = Array.isArray(data.clusters) ? data.clusters : [];
+        state.mode = 'snapshot';
+        renderClusters(state.snapshot);
+        showClusterMessage('Cluster ready — use the toggle below to view it.');
+        updateViewControls();
+        renderBoard();
+      } catch (err) {
+        showClusterMessage(err.message);
+      }
+    });
+
+    sampleBtn.addEventListener('click', () => {
+      stopActiveRecording();
+      state.usingSamples = true;
+      state.typingMap.clear();
+      state.keywords = [];
+      state.feedbackDrafts.clear();
+      state.transcripts.clear();
+      modelTa.value = '';
+      renderKeywordChips();
+      sampleNotice.classList.remove('hidden');
+      state.latestPrompt = PROMPT_TEMPLATE;
+      showClusterMessage(DEFAULT_CLUSTERS_TEXT);
+      state.mode = 'live';
+      state.snapshot = [];
+      state.snapshotTimestamp = null;
+      state.clusters = [];
+      renderClusters([]);
+      updateViewControls();
+      renderBoard();
+    });
+
+    clearSampleBtn.addEventListener('click', () => {
+      stopActiveRecording();
+      state.usingSamples = false;
+      sampleNotice.classList.add('hidden');
+      state.latestPrompt = PROMPT_TEMPLATE;
+      showClusterMessage(DEFAULT_CLUSTERS_TEXT);
+      state.mode = 'live';
+      state.snapshot = [];
+      state.snapshotTimestamp = null;
+      state.clusters = [];
+      renderClusters([]);
+      updateViewControls();
+      renderBoard();
+    });
+
+    modelTa.addEventListener('blur', autoExtractKeywords);
+    modelTa.addEventListener('input', debounce(autoExtractKeywords, 350));
+
+    showClusterMessage(DEFAULT_CLUSTERS_TEXT);
+    renderClusters([]);
+    updateViewControls();
+
+    liveViewBtn.addEventListener('click', () => {
+      if (state.mode === 'live') return;
+      state.mode = 'live';
+      updateViewControls();
+      renderBoard();
+    });
+
+    clusteredViewBtn.addEventListener('click', () => {
+      if (clusteredViewBtn.disabled || state.mode === 'snapshot') return;
+      state.mode = 'snapshot';
+      updateViewControls();
+      renderBoard();
+    });
+
+    renderKeywordChips();
+    renderBoard();
+    connectRealtime();
+  </script>
+</body>
+</html>
